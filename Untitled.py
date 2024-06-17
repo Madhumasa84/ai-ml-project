@@ -1,159 +1,51 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[36]:
-
-
-# importing the modules required for data training after the data cleaning
-
-
 import pandas as pd
-import plotly.express as px
-import seaborn as sns
-import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score,f1_score,precision_score,recall_score
-from sklearn import svm
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.impute import SimpleImputer
+data = pd.read_csv('data.csv')
+num_cols = data.select_dtypes(include=['int64', 'float64']).columns
+cat_cols = data.select_dtypes(include=['object']).columns
 
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from sklearn.ensemble import VotingClassifier
+imputer_num = SimpleImputer(strategy='median')
+imputer_cat = SimpleImputer(strategy='most_frequent')
 
+data[num_cols] = imputer_num.fit_transform(data[num_cols])
+data[cat_cols] = imputer_cat.fit_transform(data[cat_cols])
+label_encoders = {}
+for col in cat_cols:
+    le = LabelEncoder()
+    data[col] = le.fit_transform(data[col])
+    label_encoders[col] = le
+X = data.drop(columns=['respondent_id', 'xyz_vaccine', 'seasonal_vaccine'])
+y = data[['xyz_vaccine', 'seasonal_vaccine']]
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import roc_auc_score
 
-# In[8]:
+rf_xyz = RandomForestClassifier(random_state=42)
+rf_seasonal = RandomForestClassifier(random_state=42)
 
+rf_xyz.fit(X_train, y_train['xyz_vaccine'])
+rf_seasonal.fit(X_train, y_train['seasonal_vaccine'])
 
-# importing the data set from online
+xyz_pred_probs = rf_xyz.predict_proba(X_test)[:, 1]
+seasonal_pred_probs = rf_seasonal.predict_proba(X_test)[:, 1]
+xyz_auc = roc_auc_score(y_test['xyz_vaccine'], xyz_pred_probs)
+seasonal_auc = roc_auc_score(y_test['seasonal_vaccine'], seasonal_pred_probs)
 
-data = pd.read_csv("C:/Users/smkp8/Downloads/ML model for machine images/dataset.csv")
-data.head()
-
-
-# In[9]:
-
-
-data.info()
-
-
-# In[10]:
-
-
-data.rename(columns = {'Nacionality':'Nationality', 'Age at enrollment':'Age'}, inplace = True)
-
-
-# In[11]:
-
-
-print(data["Target"].unique())
-
-
-# In[ ]:
-
-
-
-
-
-# In[16]:
-
-
-new_data = data.copy()
-new_data = new_data.drop(columns=['Nationality', 
-                                  'Mother\'s qualification', 
-                                  'Father\'s qualification', 
-                                  'Educational special needs', 
-                                  'International', 
-                                  'Curricular units 1st sem (without evaluations)',
-                                  'Unemployment rate', 
-                                  'Inflation rate'], axis=1)
-new_data.info()
-
-
-# In[17]:
-
-
-new_data['Target'].value_counts()
-
-
-# In[18]:
-
-
-x = new_data['Target'].value_counts().index
-y = new_data['Target'].value_counts().values
-
-df = pd.DataFrame({
-    'Target': x,
-    'Count_T' : y
+print(f'ROC AUC for xyz_vaccine: {xyz_auc}')
+print(f'ROC AUC for seasonal_vaccine: {seasonal_auc}')
+print(f'Mean ROC AUC: {(xyz_auc + seasonal_auc) / 2}'
+xyz_pred_probs_full = rf_xyz.predict_proba(X)[:, 1]
+seasonal_pred_probs_full = rf_seasonal.predict_proba(X)[:, 1]
+submission = pd.DataFrame({
+    'respondent_id': data['respondent_id'],
+    'xyz_vaccine': xyz_pred_probs_full,
+    'seasonal_vaccine': seasonal_pred_probs_full
 })
+submission.to_csv('submission.csv', index=False)
 
-fig = px.pie(df,
-             names ='Target', 
-             values ='Count_T',
-            title='How many dropouts, enrolled & graduates are there in Target column')
-
-fig.update_traces(labels=['Graduate','Dropout','Enrolled'], hole=0.4,textinfo='value+label', pull=[0,0.2,0.1])
-fig.show()
-
-
-# In[19]:
-
-
-correlations = data.corr()['Target']
-top_10_features = correlations.abs().nlargest(10).index
-top_10_corr_values = correlations[top_10_features]
-
-plt.figure(figsize=(10, 11))
-plt.bar(top_10_features, top_10_corr_values)
-plt.xlabel('Features')
-plt.ylabel('Correlation with Target')
-plt.title('Top 10 Features with Highest Correlation to Target')
-plt.xticks(rotation=45)
-plt.show()
-
-
-# In[20]:
-
-
-plt.figure(figsize=(10, 6))
-sns.boxplot(x='Target', y='Age', data=new_data)
-plt.xlabel('Target')
-plt.ylabel('Age')
-plt.title('Relationship between Age and Target')
-plt.show()
-
-
-# In[21]:
-
-
-X = new_data.drop('Target', axis=1)
-y = new_data['Target']
-
-
-# In[22]:
-
-
-X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.2,random_state=0)
-
-
-# In[42]:
-
-
-# svm training
-clf= svm.SVC(kernel='linear',probability=True)
-
-
-# In[38]:
-
-
-clf.fit(X_train, y_train)
-
-
-# In[40]:
-
-
-y_pred = clf.predict(X_test)
-print("Accuracy :",round(accuracy_score(y_test,y_pred)*100,2),"%")
-
-
-# In[ ]:
 
 
 
